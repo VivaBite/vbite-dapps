@@ -1,0 +1,58 @@
+{
+  "name": "@vivabite/dapps",
+  "version": "1.0.0",
+  "author": {
+    "name": "Serhii Mykkhailovskyi",
+    "email": "sergio@smounters.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "clean": "rimraf abi/*.json types/**/*.{ts,js,d.ts} out cache_forge",
+    "build": "pnpm clean && forge build --skip scripts/*.sol",
+    "build:abi": " ./scripts/export-abi.ts",
+    "test": "forge local --no-fork",
+    "deploy:local:contracts": "FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --broadcast --slow",
+    "lint:sol": "solhint 'contracts/**/*.sol'",
+    "format:sol": "prettier --write 'contracts/**/*.sol'"
+  },
+  "type": "module",
+  "main": "types/index.ts",
+  "types": "types/index.ts",
+  "exports": {
+    "./abi/*": {
+      "default": "./abi/*.abi.json"
+    }
+  },
+  "files": [
+    "abi",
+    "types"
+  ],
+  "devDependencies": {
+    "@typechain/ethers-v6": "^0.5.1",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.17.30",
+    "@typescript-eslint/eslint-plugin": "^8.30.1",
+    "@typescript-eslint/parser": "^8.30.1",
+    "@vivabite/eslint-config": "workspace:*",
+    "dotenv": "^16.3.1",
+    "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.2",
+    "eslint-plugin-prettier": "^5.2.6",
+    "ethers": "^6.13.5",
+    "fs-extra": "^11.3.0",
+    "glob": "^11.0.1",
+    "globals": "^16.0.0",
+    "prettier": "^3.5.3",
+    "prettier-plugin-solidity": "^1.4.2",
+    "rimraf": "^6.0.1",
+    "solhint": "^5.0.5",
+    "typechain": "^8.3.2",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.30.1"
+  },
+  "dependencies": {
+    "bip39": "^3.1.0",
+    "ethereumjs-wallet": "^1.0.2",
+    "tsx": "^4.7.0"
+  }
+}
