@@ -9,7 +9,6 @@ import "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/utils/Address.sol";
 import "@openzeppelin/utils/Pausable.sol";
 import "@openzeppelin/utils/ReentrancyGuard.sol";
-import "@openzeppelin/governance/TimelockController.sol";
 
 interface IVBITELifetimeNFT {
     function totalMinted(VBITEAccessTypes.Tier tier) external view returns (uint256);
@@ -70,10 +69,6 @@ contract VBITECrowdsale is Ownable, ReentrancyGuard, Pausable {
     address public constant NATIVE_TOKEN = address(0);
     uint256 public initialVbiteAllocation;
 
-    // TimelockController
-    uint256 public constant MIN_TIMELOCK_DELAY = 1 days; // Минимальная задержка 1 день
-    TimelockController public timelock;
-
     // Custom errors
     error AlreadyInitialized();
     error CalculationOverflow(string operation);
@@ -82,7 +77,6 @@ contract VBITECrowdsale is Ownable, ReentrancyGuard, Pausable {
     error InvalidDecimals();
     error InvalidOracleDelay();
     error NFTMintFailure(address recipient, VBITEAccessTypes.Tier tier);
-    error OnlyTimelockAllowed();
     error OperationAlreadyExecuted();
     error OperationNotReady();
     error OracleDataInvalid(string reason);
@@ -110,10 +104,6 @@ contract VBITECrowdsale is Ownable, ReentrancyGuard, Pausable {
     mapping(address => TokenConfig) public tokens;
     mapping(address => OracleCache) public oracleCache;
 
-    // To track expected changes
-    address public pendingTreasury;
-    uint256 public pendingRate;
-
     event AllOracleCachesUpdated(uint256 timestamp, uint256 count);
     event AnomalyDetected(address token, int256 oldPrice, int256 newPrice, uint256 percentChange);
     event ContractPaused(address account);
@@ -136,17 +126,13 @@ contract VBITECrowdsale is Ownable, ReentrancyGuard, Pausable {
      * @param _treasury Treasury address for collecting funds
      * @param _rate Exchange rate (VBITE per 1 USD * 10^8)
      * @param _lifetimeNFT NFT Contract address
-     * @param _proposers Addresses allowed to create timelock proposals
-     * @param _executors Addresses allowed to execute timelock proposals
      */
     constructor(
         address _owner,
         address _vbite,
         address _treasury,
         uint256 _rate,
-        address _lifetimeNFT,
-        address[] memory _proposers,
-        address[] memory _executors
+        address _lifetimeNFT
     ) Ownable(_owner) {
         if(_vbite == address(0)) revert ZeroAddressProvided();
         if(_treasury == address(0)) revert ZeroAddressProvided();
@@ -157,14 +143,6 @@ contract VBITECrowdsale is Ownable, ReentrancyGuard, Pausable {
         treasury = _treasury;
         rate = _rate;
         lifetimeNFT = IVBITELifetimeNFT(_lifetimeNFT);
-
-        // Initializing TimelockController
-        timelock = new TimelockController(
-            MIN_TIMELOCK_DELAY,
-            _proposers,
-            _executors,
-            address(0) // admin (0 = нет админа)
-        );
     }
 
     // ==========================================
@@ -265,118 +243,27 @@ contract VBITECrowdsale is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Requests a change of treasury address (via timelock)
-     * @param newTreasury New treasury address
+     * @notice Set new Treasury address
+     * @param newTreasury Address ow new Treasury wallet
      */
-    function requestTreasuryChange(address newTreasury) external onlyOwner {
-        if(newTreasury == address(0)) revert ZeroAddressProvided();
-        pendingTreasury = newTreasury;
-
-        // Create a deferred transaction via timelock
-        bytes memory data = abi.encodeWithSelector(
-            this.executeTreasuryChange.selector,
-            newTreasury
-        );
-
-        timelock.schedule(
-            address(this),
-            0, // value
-            data,
-            bytes32(0), // predecessor
-            bytes32(0), // salt
-            MIN_TIMELOCK_DELAY
-        );
-
-        emit TreasuryChangeRequested(treasury, newTreasury);
-    }
-
-    /**
-     * @notice Executes treasury address change (only via timelock)
-     * @param newTreasury New treasury address
-     */
-    function executeTreasuryChange(address newTreasury) external {
-        if(msg.sender != address(timelock)) revert OnlyTimelockAllowed();
-        if(newTreasury != pendingTreasury) revert ZeroAddressProvided();
-
-        // Проверка что операция действительно была запланирована через timelock
-        bytes32 id = keccak256(abi.encode(
-            address(this),
-            0, // value
-            abi.encodeWithSelector(this.executeTreasuryChange.selector, newTreasury),
-            bytes32(0), // predecessor
-            bytes32(0)  // salt
-        ));
-
-        if (!timelock.isOperationReady(id)) {
-            revert OperationNotReady();
-        }
-        if (timelock.isOperationDone(id)) {
-            revert  OperationAlreadyExecuted();
-        }
-
+    function setTreasury(address newTreasury) external onlyOwner {
+        if (newTreasury == address(0)) revert ZeroAddressProvided();
         address oldTreasury = treasury;
         treasury = newTreasury;
-        pendingTreasury = address(0);
-
         emit TreasuryChanged(oldTreasury, newTreasury);
     }
 
     /**
-     * @notice Requests a VBITE rate change (via timelock)
-     * @param newRate New exchange rate
+     * @notice Set new Crowdsale rate
+     * @param newRate New rate VBITE/USD
      */
-    function requestRateChange(uint256 newRate) external onlyOwner {
-        if(newRate == 0) revert ZeroRateProvided();
-        pendingRate = newRate;
-
-        // Create a deferred transaction via timelock
-        bytes memory data = abi.encodeWithSelector(
-            this.executeRateChange.selector,
-            newRate
-        );
-
-        timelock.schedule(
-            address(this),
-            0, // value
-            data,
-            bytes32(0), // predecessor
-            bytes32(0), // salt
-            MIN_TIMELOCK_DELAY
-        );
-
-        emit RateChangeRequested(rate, newRate);
-    }
-
-    /**
-     * @notice Executes rate change (only via timelock)
-     * @param newRate New exchange rate
-     */
-    function executeRateChange(uint256 newRate) external {
-        if(msg.sender != address(timelock)) revert OnlyTimelockAllowed();
-        if(newRate != pendingRate) revert ZeroRateProvided();
-
-        bytes32 id = keccak256(abi.encode(
-            address(this),
-            0, // value
-            abi.encodeWithSelector(this.executeRateChange.selector, newRate),
-            bytes32(0), // predecessor
-            bytes32(0)  // salt
-        ));
-
-        if (!timelock.isOperationReady(id)) {
-            revert OperationNotReady();
-        }
-        if (timelock.isOperationDone(id)) {
-            revert OperationAlreadyExecuted();
-        }
-
-
+    function setRate(uint256 newRate) external onlyOwner {
+        if (newRate == 0) revert ZeroRateProvided();
         uint256 oldRate = rate;
         rate = newRate;
-        pendingRate = 0;
-
         emit RateChanged(oldRate, newRate);
     }
+
 
     /**
      * @notice Sets maximum allowable oracle data delay

@@ -12,8 +12,8 @@
     "build:abi": " ./scripts/export-abi.ts",
     "test": "forge local --no-fork",
     "deploy:local:contracts": "FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --broadcast --slow",
-    "deploy:prod:contracts": "pnpm dotenv -e .env.prod -- FOUNDRY_PROFILE=scripts forge script scripts/DeployProd.s.sol --rpc-url $ETH_RPC_URL --slow --broadcast",
-    "dryrun:prod:contracts": "pnpm dotenv -e .env.prod -- FOUNDRY_PROFILE=scripts forge script scripts/DeployProd.s.sol --rpc-url $ETH_RPC_URL --slow",
+    "deploy:prod:contracts": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/DeployProd.s.sol --rpc-url $ETH_RPC_URL --slow --broadcast'",
+    "dryrun:prod:contracts": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/DeployProd.s.sol --rpc-url $ETH_RPC_URL --slow'",
     "format:sol": "prettier --write 'contracts/**/*.sol'"
   },
   "type": "module",
