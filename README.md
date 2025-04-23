@@ -15,10 +15,9 @@ This repository is the main development monorepo for all EVM-based components of
 
 ```text
 contracts/       # Core Solidity contracts
-mocks/           # Internal test/mock contracts (excluded from submodules)
-dependencies/    # External dependencies (ERC20, Chainlink, etc)
-scripts/         # Foundry/Node deploy & automation scripts
 local/           # Local development & config files
+mocks/           # Internal test/mock contracts
+scripts/         # Foundry/Node deploy & automation scripts
 ```
 
 ---
@@ -37,12 +36,13 @@ This project uses:
 
 All core contracts are located in `contracts/` and are published via submodule in [`vbite-dapps`](https://github.com/VivaBite/vbite-dapps).
 
-| Contract               | Purpose                                                                      |
-|------------------------|------------------------------------------------------------------------------|
-| `VBITE.sol`            | ERC20 token contract                                                         |
-| `VBITECrowdsale.sol`   | Crowdsale with multiple payment tokens, Chainlink price feeds, and NFT logic |
-| `VBITELifetimeNFT.sol` | Lifetime non-transferable NFT contract (Silver, Gold, Platinum tiers)        |
-| `VBITEAccessTypes.sol` | Enum declarations for NFT types and internal access control                  |
+| Contract                | Purpose                                                                      |
+|-------------------------|------------------------------------------------------------------------------|
+| `VBITE.sol`             | ERC20 token contract                                                         |
+| `VBITECrowdsale.sol`    | Crowdsale with multiple payment tokens, Chainlink price feeds, and NFT logic |
+| `VBITELifetimeNFT.sol`  | Lifetime non-transferable NFT contract (Silver, Gold, Platinum tiers)        |
+| `VBITEAccessTypes.sol`  | Enum declarations for NFT types and internal access control                  |
+| `VBITEVestingVault.sol` | Token vault with linear vesting logic for deferred team and project rewards  |
 
 ---
 
@@ -59,11 +59,12 @@ Deployment scripts are located in `scripts/`. You can deploy to:
 
 Below are the on-chain addresses of the deployed contracts. These will be updated as deployment progresses:
 
-| Contract           | Network         | Address |
-|--------------------|-----------------|---------|
-| `VBITE`            | Polygon Mainnet | `TBD`   |
-| `VBITECrowdsale`   | Polygon Mainnet | `TBD`   |
-| `VBITELifetimeNFT` | Polygon Mainnet | `TBD`   |
+| Contract            | Network         | Address                                      |
+|---------------------|-----------------|----------------------------------------------|
+| `VBITE`             | Polygon Mainnet | `0x02B3aC425256f2ae621D759b48e79701A655E886` |
+| `VBITECrowdsale`    | Polygon Mainnet | `0x873c841E039e23981c01E3d5d3DffFF60c3ec105` |
+| `VBITELifetimeNFT`  | Polygon Mainnet | `0xCC88CCeca7d12ED5034B8F896236C3bae6068E30` |
+| `VBITEVestingVault` | Polygon Mainnet | `0x89d47274fDef18f5836B5d3665E73df7648b3BD1` |
 
 > These addresses will be published after deployment and verification. Please refer to official sources for up-to-date data
 
