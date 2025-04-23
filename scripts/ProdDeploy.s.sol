@@ -8,7 +8,7 @@ import "../contracts/VBITEVestingVault.sol";
 import "../contracts/VBITECrowdsale.sol";
 import "../contracts/VBITEAccessTypes.sol";
 
-contract DeployProdFull is Script {
+contract ProdDeploy is Script {
     function run() external {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
         address owner = vm.envAddress("OWNER_ADDRESS");
@@ -45,6 +45,7 @@ contract DeployProdFull is Script {
             '"crowdsaleAddress":"', vm.toString(address(crowdsale)), '",',
             '"nftAddress":"', vm.toString(address(lifetimeNFT)), '",',
             '"vestingAddress":"', vm.toString(address(vestingVault)), '"',
+            '}',
             '}'
         );
 
