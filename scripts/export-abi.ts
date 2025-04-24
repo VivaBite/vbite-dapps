@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const CONTRACTS_DIR = path.resolve(__dirname, '../contracts/contracts');
+const CONTRACTS_DIR = path.resolve(__dirname, '../contracts');
 const OUT_DIR = path.resolve(__dirname, '../out');
 const DEST_DIR = path.resolve(__dirname, '../abi');
 
