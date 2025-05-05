@@ -11,8 +11,8 @@
     "build": "pnpm clean && forge build --skip scripts/*.sol",
     "build:abi": " ./scripts/export-abi.ts",
     "test": "forge local --no-fork",
-    "local:deploy": "dotenv -e .env.local -- bash -c 'FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --broadcast --slow'",
-    "local:deploy:dryrun": "dotenv -e .env.local -- bash -c 'FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --slow'",
+    "local:deploy": "dotenv -e .env.local -- bash -c 'FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --broadcast --via-ir --ffi --slow'",
+    "local:deploy:dryrun": "dotenv -e .env.local -- bash -c 'FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --via-ir --ffi --slow'",
     "prod:deploy": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/ProdDeploy.s.sol --rpc-url $ETH_RPC_URL --slow --broadcast'",
     "prod:deploy:dryrun": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/ProdDeploy.s.sol --rpc-url $ETH_RPC_URL --slow'",
     "format:sol": "prettier --write 'contracts/**/*.sol'"

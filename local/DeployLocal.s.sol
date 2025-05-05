@@ -228,7 +228,7 @@ contract DeployLocal is Script {
             '"vestingAddress":"', vm.toString(address(vestingVault)), '",',
             '},',
             '"tokens":{',
-            '"matic":"', vm.toString(address(matic)), '",',
+            '"matic":"', vm.toString(address(0)), '",',
             '"usdc":"', vm.toString(address(usdc)), '",',
             '"usdt":"', vm.toString(address(usdt)), '",',
             '"dai":"', vm.toString(address(dai)), '",',
