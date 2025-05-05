@@ -60,7 +60,7 @@ contract DeployLocal is Script {
 
         // 4. Деплой контракта краудсейла
         // Rate: 100 VBITE за 1 USD (1 VBITE = $0.01)
-        uint256 initialRate = 0.01 * 1e8;
+        uint256 initialRate = 1e6;
         VBITECrowdsale crowdsale = new VBITECrowdsale(
             owner,
             address(vbite),
@@ -111,17 +111,9 @@ contract DeployLocal is Script {
         // деплой моков чайинлинка м самих токенов
         // MATIC USDC USDT DAI LINK AAVE CRV BAL SUSHI
         // function addAcceptedToken(address token, uint8 decimals, address priceFeed)
-        MockERC20 matic = new MockERC20("Mock MATIC", "MATIC", 18, 10**24);
-        console.log("MATIC token deployed at:", address(matic));
         MockV3Aggregator maticFeed = new MockV3Aggregator(8, 70_000_000); // 0.70 MATIC
         console.log("MATIC feed deployed at:", address(maticFeed));
         crowdsale.addAcceptedToken(address(0), 18, address(maticFeed));
-        if (hasTestUsers) {
-            uint256 supply = 5 * 10**22;
-            matic.transfer(user1, supply);
-            matic.transfer(user2, supply);
-            console.log("Transferred MATIC to test users: %s tokens each", supply / 1e18);
-        }
 
         MockERC20 usdc = new MockERC20("Mock USDC", "USDC", 6, 10**12);
         console.log("USDC token deployed at:", address(usdc));

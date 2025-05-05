@@ -1,0 +1,10 @@
+export default {
+  semi: true,
+  singleQuote: true,
+  doubleQuote: false,
+  printWidth: 100,
+  tabWidth: 2,
+  trailingComma: "es5",
+  bracketSpacing: true,
+  arrowParens: "always"
+}
