@@ -11,7 +11,8 @@
     "build": "pnpm clean && forge build --skip scripts/*.sol",
     "build:abi": " ./scripts/export-abi.ts",
     "test": "forge local --no-fork",
-    "deploy:local": "FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --broadcast --slow",
+    "local:deploy": "dotenv -e .env.local -- bash -c 'FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --broadcast --via-ir --ffi --slow'",
+    "local:deploy:dryrun": "dotenv -e .env.local -- bash -c 'FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --via-ir --ffi --slow'",
     "prod:deploy": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/ProdDeploy.s.sol --rpc-url $ETH_RPC_URL --slow --broadcast'",
     "prod:deploy:dryrun": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/ProdDeploy.s.sol --rpc-url $ETH_RPC_URL --slow'",
     "format:sol": "prettier --write 'contracts/**/*.sol'"
@@ -34,7 +35,6 @@
     "@types/node": "^22.15.3",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "@vivabite/eslint-config": "workspace:*",
     "dotenv": "^16.5.0",
     "dotenv-cli": "^8.0.0",
     "eslint": "^9.25.1",
@@ -55,5 +55,6 @@
   "dependencies": {
     "bip39": "^3.1.0",
     "tsx": "^4.19.4"
-  }
+  },
+  "packageManager": "pnpm@10.9.0+sha512.0486e394640d3c1fb3c9d43d49cf92879ff74f8516959c235308f5a8f62e2e19528a65cdc2a3058f587cde71eba3d5b56327c8c33a97e4c4051ca48a10ca2d5f"
 }

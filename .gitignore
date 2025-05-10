@@ -74,7 +74,6 @@ abi/
 types/
 broadcast/
 
-*.local.json
 
 # Soldeer
 /dependencies
