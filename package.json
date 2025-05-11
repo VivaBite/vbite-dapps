@@ -7,7 +7,7 @@
   },
   "license": "MIT",
   "scripts": {
-    "clean": "rimraf abi/*.json types/**/*.{ts,js,d.ts} out cache_forge",
+    "clean": "pnpm rimraf abi/*.json types/**/*.{ts,js,d.ts} out cache_forge",
     "build": "pnpm clean && forge build --skip scripts/*.sol",
     "build:abi": " ./scripts/export-abi.ts",
     "test": "forge local --no-fork",
