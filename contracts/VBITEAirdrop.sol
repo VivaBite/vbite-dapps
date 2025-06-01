@@ -29,8 +29,8 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     /// @notice Contract deployment timestamp (round 0 start)
     uint256 public immutable deploymentTime;
     
-    /// @notice Current active round
-    uint256 public currentRound;
+    /// @notice Last round for which Merkle root was set
+    uint256 public lastRoundWithRoot;
     
     /// @notice Merkle root for each round
     mapping(uint256 => bytes32) public merkleRoots;
@@ -59,6 +59,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     error MerkleRootNotSet(uint256 round);
     error InsufficientContractBalance(uint256 required, uint256 available);
     error RoundInFuture(uint256 round, uint256 currentRound);
+    error ArrayLengthMismatch();
 
     // ==========================================
     // Events
@@ -110,7 +111,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         
         vbiteToken = IERC20(_vbiteToken);
         deploymentTime = block.timestamp;
-        currentRound = 0;
+        // lastRoundWithRoot starts at 0 by default
     }
 
     // ==========================================
@@ -155,13 +156,12 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @notice Check if round is currently active
+     * @notice Check if round is currently active (time-based)
      * @param round Round number to check
      * @return True if round is active
      */
     function isRoundActive(uint256 round) public view returns (bool) {
-        uint256 currentRoundNum = getCurrentRound();
-        return round <= currentRoundNum;
+        return round <= getCurrentRound();
     }
 
     /**
@@ -182,6 +182,28 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         
         bytes32 leaf = keccak256(abi.encodePacked(user, amount));
         return MerkleProof.verify(proof, merkleRoots[round], leaf);
+    }
+
+    /**
+     * @notice Get user information for a specific round
+     * @param user User address
+     * @param round Round number
+     * @return hasClaimed_ Whether user has claimed in this round
+     * @return hasRoot Whether Merkle root is set for this round
+     * @return isActive Whether round is currently active
+     */
+    function getUserInfo(address user, uint256 round) 
+        external 
+        view 
+        returns (
+            bool hasClaimed_, 
+            bool hasRoot, 
+            bool isActive
+        ) 
+    {
+        hasClaimed_ = hasClaimed[round][user];
+        hasRoot = merkleRoots[round] != bytes32(0);
+        isActive = isRoundActive(round);
     }
 
     // ==========================================
@@ -241,7 +263,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     ) external whenNotPaused nonReentrant {
         uint256 length = rounds.length;
         if (length != amounts.length || length != proofs.length) {
-            revert("Array lengths mismatch");
+            revert ArrayLengthMismatch();
         }
 
         uint256 totalAmount = 0;
@@ -304,9 +326,9 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         
         merkleRoots[round] = merkleRoot;
         
-        // Update current round if setting for a newer round
-        if (round > currentRound) {
-            currentRound = round;
+        // Update last round with root if this is newer
+        if (round > lastRoundWithRoot) {
+            lastRoundWithRoot = round;
         }
 
         emit MerkleRootSet(round, merkleRoot, msg.sender);
@@ -322,10 +344,11 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         bytes32[] calldata merkleRootArray
     ) external onlyOwner {
         if (rounds.length != merkleRootArray.length) {
-            revert("Array lengths mismatch");
+            revert ArrayLengthMismatch();
         }
 
         uint256 currentRoundNum = getCurrentRound();
+        uint256 maxRound = lastRoundWithRoot;
 
         for (uint256 i = 0; i < rounds.length; i++) {
             uint256 round = rounds[i];
@@ -333,12 +356,14 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
             
             merkleRoots[round] = merkleRootArray[i];
             
-            if (round > currentRound) {
-                currentRound = round;
+            if (round > maxRound) {
+                maxRound = round;
             }
 
             emit MerkleRootSet(round, merkleRootArray[i], msg.sender);
         }
+
+        lastRoundWithRoot = maxRound;
     }
 
     /**
@@ -395,14 +420,5 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     function unpause() external onlyOwner {
         _unpause();
         emit ContractUnpaused(msg.sender);
-    }
-
-    /**
-     * @notice Update current round manually (if needed)
-     * @param round New current round number
-     */
-    function updateCurrentRound(uint256 round) external onlyOwner {
-        if (round > getCurrentRound()) revert RoundInFuture(round, getCurrentRound());
-        currentRound = round;
     }
 }
