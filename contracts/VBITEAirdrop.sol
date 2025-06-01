@@ -11,7 +11,7 @@ import "@openzeppelin/utils/cryptography/MerkleProof.sol";
 /**
  * @title VBITE Airdrop Contract
  * @notice Daily round-based airdrop system using Merkle trees for gas optimization
- * @dev Each round lasts 1 day, admin sets Merkle roots, users claim once per round
+ * @dev Each round starts at 00:00 UTC, users can claim from any round with valid proof
  */
 contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -26,11 +26,14 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     /// @notice Duration of each round in seconds (1 day)
     uint256 public constant ROUND_DURATION = 1 days;
     
-    /// @notice Contract deployment timestamp (round 0 start)
+    /// @notice Contract deployment timestamp (round 0 start at 00:00 UTC)
     uint256 public immutable deploymentTime;
     
     /// @notice Last round for which Merkle root was set
     uint256 public lastRoundWithRoot;
+    
+    /// @notice Maximum allowed round number (prevents claiming from future rounds)
+    uint256 public maxAllowedRound;
     
     /// @notice Merkle root for each round
     mapping(uint256 => bytes32) public merkleRoots;
@@ -47,19 +50,42 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     /// @notice Total tokens claimed across all rounds
     uint256 public totalClaimed;
 
+    // Добавить константы для защиты
+    uint256 public constant MAX_BATCH_SIZE = 50;
+    uint256 public constant MAX_CLAIM_AMOUNT = 1_000_000 * 10**18; // 1M токенов
+    uint256 public constant MAX_ROUNDS_AHEAD = 365; // Максимум на год вперед
+
+    // Добавить переменные состояния
+    uint256 public dailyClaimLimit = 10_000_000 * 10**18; // 10M токенов в день
+    mapping(uint256 => uint256) public dailyClaimed; // день => количество
+
+    // Для повышения доверия пользователей
+    uint256 public constant TIMELOCK_DELAY = 24 hours;
+    mapping(bytes32 => uint256) public timelocks;
+
     // ==========================================
     // Custom Errors
     // ==========================================
 
     error ZeroAddressProvided();
     error ZeroAmountProvided();
-    error RoundNotActive(uint256 round);
+    error RoundNotExists(uint256 round, uint256 maxRound);
     error InvalidMerkleProof();
     error AlreadyClaimedInRound(uint256 round, address user);
     error MerkleRootNotSet(uint256 round);
     error InsufficientContractBalance(uint256 required, uint256 available);
     error RoundInFuture(uint256 round, uint256 currentRound);
     error ArrayLengthMismatch();
+    
+    // 🔥 НОВЫЕ кастомные ошибки взамен require и строк
+    error AmountTooLarge(uint256 amount, uint256 maxAmount);
+    error DailyClaimLimitExceeded(uint256 requested, uint256 available);
+    error TooManyBatchOperations(uint256 length, uint256 maxLength);
+    error IntegerOverflow();
+    error DeploymentTimeTooFarInPast(uint256 deploymentTime, uint256 minimumTime);
+    error CannotSetZeroMerkleRoot();
+    error OperationNotProposed(bytes32 operation);
+    error TimelockNotExpired(uint256 currentTime, uint256 requiredTime);
 
     // ==========================================
     // Events
@@ -78,6 +104,12 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         address indexed admin
     );
     
+    event MaxAllowedRoundUpdated(
+        uint256 oldMaxRound,
+        uint256 newMaxRound,
+        address indexed admin
+    );
+    
     event TokensDeposited(
         address indexed admin,
         uint256 amount,
@@ -93,6 +125,13 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     event ContractPaused(address indexed admin);
     event ContractUnpaused(address indexed admin);
 
+    // Дополнительные события для мониторинга
+    event LargeClaimAttempt(address indexed user, uint256 round, uint256 amount);
+    event MerkleRootOverwritten(uint256 indexed round, bytes32 oldRoot, bytes32 newRoot);
+    event EmergencyWithdraw(address indexed admin, uint256 amount, uint256 timestamp);
+    event DailyClaimLimitUpdated(uint256 oldLimit, uint256 newLimit);
+    event OperationProposed(bytes32 operation, uint256 executionTime);
+
     // ==========================================
     // Constructor
     // ==========================================
@@ -101,17 +140,32 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
      * @notice Initialize airdrop contract
      * @param _vbiteToken Address of VBITE token contract
      * @param _owner Contract owner address
+     * @param _deploymentTime Optional custom deployment time (use 0 for current time)
      */
     constructor(
         address _vbiteToken,
-        address _owner
+        address _owner,
+        uint256 _deploymentTime
     ) Ownable(_owner) {
         if (_vbiteToken == address(0)) revert ZeroAddressProvided();
         if (_owner == address(0)) revert ZeroAddressProvided();
         
         vbiteToken = IERC20(_vbiteToken);
-        deploymentTime = block.timestamp;
-        // lastRoundWithRoot starts at 0 by default
+        
+        if (_deploymentTime > 0) {
+            // ✅ ЗАМЕНЕНО: Добавляем проверку на разумное время
+            if (_deploymentTime > block.timestamp) revert RoundInFuture(_deploymentTime, block.timestamp);
+            if (_deploymentTime < block.timestamp - 7 days) {
+                revert DeploymentTimeTooFarInPast(_deploymentTime, block.timestamp - 7 days);
+            }
+            deploymentTime = _deploymentTime;
+        } else {
+            // Align to midnight UTC с дополнительной проверкой
+            uint256 alignedTime = (block.timestamp / ROUND_DURATION) * ROUND_DURATION;
+            deploymentTime = alignedTime;
+        }
+        
+        maxAllowedRound = getCurrentRound();
     }
 
     // ==========================================
@@ -119,7 +173,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     // ==========================================
 
     /**
-     * @notice Get current round number based on time
+     * @notice Get current round number based on time (00:00 UTC boundaries)
      * @return Current round number
      */
     function getCurrentRound() public view returns (uint256) {
@@ -145,23 +199,23 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @notice Get round start and end timestamps
+     * @notice Get round start and end timestamps (aligned to 00:00 UTC)
      * @param round Round number
-     * @return startTime Round start timestamp
-     * @return endTime Round end timestamp
+     * @return startTime Round start timestamp (00:00 UTC)
+     * @return endTime Round end timestamp (23:59:59 UTC)
      */
     function getRoundTimes(uint256 round) external view returns (uint256 startTime, uint256 endTime) {
         startTime = deploymentTime + (round * ROUND_DURATION);
-        endTime = startTime + ROUND_DURATION;
+        endTime = startTime + ROUND_DURATION - 1; // 23:59:59 of the same day
     }
 
     /**
-     * @notice Check if round is currently active (time-based)
+     * @notice Check if round exists and can be claimed from
      * @param round Round number to check
-     * @return True if round is active
+     * @return True if round exists and is claimable
      */
-    function isRoundActive(uint256 round) public view returns (bool) {
-        return round <= getCurrentRound();
+    function isRoundClaimable(uint256 round) public view returns (bool) {
+        return round <= maxAllowedRound && merkleRoots[round] != bytes32(0);
     }
 
     /**
@@ -190,7 +244,8 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
      * @param round Round number
      * @return hasClaimed_ Whether user has claimed in this round
      * @return hasRoot Whether Merkle root is set for this round
-     * @return isActive Whether round is currently active
+     * @return canClaim Whether user can claim from this round
+     * @return roundExists Whether round exists (not in future)
      */
     function getUserInfo(address user, uint256 round) 
         external 
@@ -198,12 +253,44 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         returns (
             bool hasClaimed_, 
             bool hasRoot, 
-            bool isActive
+            bool canClaim,
+            bool roundExists
         ) 
     {
         hasClaimed_ = hasClaimed[round][user];
         hasRoot = merkleRoots[round] != bytes32(0);
-        isActive = isRoundActive(round);
+        roundExists = round <= maxAllowedRound;
+        canClaim = roundExists && hasRoot && !hasClaimed_;
+    }
+
+    /**
+     * @notice Get multiple rounds information for a user
+     * @param user User address
+     * @param rounds Array of round numbers to check
+     * @return claimedStatus Array of claim statuses
+     * @return hasRoots Array of root existence statuses
+     * @return canClaims Array of claimability statuses
+     */
+    function getUserInfoBatch(address user, uint256[] calldata rounds)
+        external
+        view
+        returns (
+            bool[] memory claimedStatus,
+            bool[] memory hasRoots,
+            bool[] memory canClaims
+        )
+    {
+        uint256 length = rounds.length;
+        claimedStatus = new bool[](length);
+        hasRoots = new bool[](length);
+        canClaims = new bool[](length);
+        
+        for (uint256 i = 0; i < length; i++) {
+            uint256 round = rounds[i];
+            claimedStatus[i] = hasClaimed[round][user];
+            hasRoots[i] = merkleRoots[round] != bytes32(0);
+            canClaims[i] = round <= maxAllowedRound && hasRoots[i] && !claimedStatus[i];
+        }
     }
 
     // ==========================================
@@ -221,8 +308,10 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         uint256 amount,
         bytes32[] calldata proof
     ) external whenNotPaused nonReentrant {
+        // ✅ ЗАМЕНЕНО: Проверка максимальной суммы
+        if (amount > MAX_CLAIM_AMOUNT) revert AmountTooLarge(amount, MAX_CLAIM_AMOUNT);
         if (amount == 0) revert ZeroAmountProvided();
-        if (!isRoundActive(round)) revert RoundNotActive(round);
+        if (round > maxAllowedRound) revert RoundNotExists(round, maxAllowedRound);
         if (hasClaimed[round][msg.sender]) revert AlreadyClaimedInRound(round, msg.sender);
         if (merkleRoots[round] == bytes32(0)) revert MerkleRootNotSet(round);
 
@@ -230,6 +319,13 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
         if (!MerkleProof.verify(proof, merkleRoots[round], leaf)) {
             revert InvalidMerkleProof();
+        }
+
+        // ✅ ЗАМЕНЕНО: Проверка дневного лимита
+        uint256 currentDay = block.timestamp / 1 days;
+        uint256 dailyAvailable = dailyClaimLimit - dailyClaimed[currentDay];
+        if (amount > dailyAvailable) {
+            revert DailyClaimLimitExceeded(amount, dailyAvailable);
         }
 
         // Check contract has enough tokens
@@ -244,10 +340,18 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         totalClaimedByUser[msg.sender] += amount;
         totalClaimed += amount;
 
+        // Update daily claimed amount
+        dailyClaimed[currentDay] += amount;
+
         // Transfer tokens
         vbiteToken.safeTransfer(msg.sender, amount);
 
         emit TokensClaimed(msg.sender, round, amount, totalClaimedByUser[msg.sender]);
+
+        // Large claim monitoring
+        if (amount > 100_000 * 10**18) { // Больше 100K токенов
+            emit LargeClaimAttempt(msg.sender, round, amount);
+        }
     }
 
     /**
@@ -265,7 +369,10 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         if (length != amounts.length || length != proofs.length) {
             revert ArrayLengthMismatch();
         }
-
+        
+        // ✅ ЗАМЕНЕНО: Ограничение на количество batch операций
+        if (length > MAX_BATCH_SIZE) revert TooManyBatchOperations(length, MAX_BATCH_SIZE);
+        
         uint256 totalAmount = 0;
 
         // Verify all claims first
@@ -274,7 +381,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
             uint256 amount = amounts[i];
             
             if (amount == 0) revert ZeroAmountProvided();
-            if (!isRoundActive(round)) revert RoundNotActive(round);
+            if (round > maxAllowedRound) revert RoundNotExists(round, maxAllowedRound);
             if (hasClaimed[round][msg.sender]) revert AlreadyClaimedInRound(round, msg.sender);
             if (merkleRoots[round] == bytes32(0)) revert MerkleRootNotSet(round);
 
@@ -283,7 +390,10 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
                 revert InvalidMerkleProof();
             }
 
-            totalAmount += amount;
+            // ✅ ЗАМЕНЕНО: Защита от overflow
+            uint256 newTotal = totalAmount + amount;
+            if (newTotal < totalAmount) revert IntegerOverflow();
+            totalAmount = newTotal;
         }
 
         // Check contract has enough tokens
@@ -318,17 +428,24 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
      * @param round Round number
      * @param merkleRoot Merkle tree root hash
      */
-    function setMerkleRoot(
-        uint256 round,
-        bytes32 merkleRoot
-    ) external onlyOwner {
+    function setMerkleRoot(uint256 round, bytes32 merkleRoot) external onlyOwner {
         if (round > getCurrentRound()) revert RoundInFuture(round, getCurrentRound());
+        
+        // ✅ ЗАМЕНЕНО: Запрет на установку нулевого root
+        if (merkleRoot == bytes32(0)) revert CannotSetZeroMerkleRoot();
+        
+        // Проверка на перезапись существующего root
+        if (merkleRoots[round] != bytes32(0)) {
+            emit MerkleRootOverwritten(round, merkleRoots[round], merkleRoot);
+        }
         
         merkleRoots[round] = merkleRoot;
         
-        // Update last round with root if this is newer
         if (round > lastRoundWithRoot) {
             lastRoundWithRoot = round;
+        }
+        if (round > maxAllowedRound) {
+            maxAllowedRound = round;
         }
 
         emit MerkleRootSet(round, merkleRoot, msg.sender);
@@ -349,6 +466,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
 
         uint256 currentRoundNum = getCurrentRound();
         uint256 maxRound = lastRoundWithRoot;
+        uint256 newMaxAllowed = maxAllowedRound;
 
         for (uint256 i = 0; i < rounds.length; i++) {
             uint256 round = rounds[i];
@@ -359,11 +477,31 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
             if (round > maxRound) {
                 maxRound = round;
             }
+            if (round > newMaxAllowed) {
+                newMaxAllowed = round;
+            }
 
             emit MerkleRootSet(round, merkleRootArray[i], msg.sender);
         }
 
         lastRoundWithRoot = maxRound;
+        if (newMaxAllowed > maxAllowedRound) {
+            emit MaxAllowedRoundUpdated(maxAllowedRound, newMaxAllowed, msg.sender);
+            maxAllowedRound = newMaxAllowed;
+        }
+    }
+
+    /**
+     * @notice Update max allowed round (in case need to extend claimable rounds)
+     * @param newMaxRound New maximum round number
+     */
+    function updateMaxAllowedRound(uint256 newMaxRound) external onlyOwner {
+        if (newMaxRound > getCurrentRound()) revert RoundInFuture(newMaxRound, getCurrentRound());
+        
+        uint256 oldMaxRound = maxAllowedRound;
+        maxAllowedRound = newMaxRound;
+        
+        emit MaxAllowedRoundUpdated(oldMaxRound, newMaxRound, msg.sender);
     }
 
     /**
@@ -403,6 +541,46 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard {
         if (balance > 0) {
             vbiteToken.safeTransfer(msg.sender, balance);
             emit TokensWithdrawn(msg.sender, balance, 0);
+        }
+    }
+
+    /**
+     * @notice Update daily claim limit
+     * @param newLimit New daily claim limit
+     */
+    function updateDailyClaimLimit(uint256 newLimit) external onlyOwner {
+        emit DailyClaimLimitUpdated(dailyClaimLimit, newLimit);
+        dailyClaimLimit = newLimit;
+    }
+
+    /**
+     * @notice Propose emergency withdraw operation
+     */
+    function proposeEmergencyWithdraw() external onlyOwner {
+        bytes32 operation = keccak256("EMERGENCY_WITHDRAW");
+        timelocks[operation] = block.timestamp + TIMELOCK_DELAY;
+        emit OperationProposed(operation, block.timestamp + TIMELOCK_DELAY);
+    }
+
+    /**
+     * @notice Execute emergency withdraw after timelock
+     */
+    function executeEmergencyWithdraw() external onlyOwner {
+        bytes32 operation = keccak256("EMERGENCY_WITHDRAW");
+        
+        // ✅ ЗАМЕНЕНО: Проверки timelock
+        if (timelocks[operation] == 0) revert OperationNotProposed(operation);
+        if (block.timestamp < timelocks[operation]) {
+            revert TimelockNotExpired(block.timestamp, timelocks[operation]);
+        }
+        
+        delete timelocks[operation];
+        
+        // Выполнить emergency withdraw
+        uint256 balance = vbiteToken.balanceOf(address(this));
+        if (balance > 0) {
+            vbiteToken.safeTransfer(msg.sender, balance);
+            emit EmergencyWithdraw(msg.sender, balance, block.timestamp);
         }
     }
 
