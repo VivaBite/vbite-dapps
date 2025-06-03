@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/access/Ownable.sol";
-import "@openzeppelin/access/AccessControl.sol";
+import "@openzeppelin/access/extensions/AccessControlEnumerable.sol";
 import "@openzeppelin/token/ERC20/IERC20.sol";
 import "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/utils/Pausable.sol";
@@ -15,7 +15,7 @@ import "@openzeppelin/utils/cryptography/MerkleProof.sol";
  * @dev Each round starts at 00:00 UTC, users can claim from any round with valid proof
  * @dev Implements role-based access control for backend operations
  */
-contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
+contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumerable {
     using SafeERC20 for IERC20;
 
     // ==========================================
@@ -157,28 +157,28 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
     // ==========================================
     
     modifier onlyBackendAdmin() {
-        if (!hasRole(BACKEND_ADMIN_ROLE, msg.sender)) {
+        if (!(hasRole(BACKEND_ADMIN_ROLE, msg.sender) || msg.sender == owner())) {
             revert UnauthorizedRole(BACKEND_ADMIN_ROLE, msg.sender);
         }
         _;
     }
     
     modifier onlyMerkleSetter() {
-        if (!hasRole(MERKLE_SETTER_ROLE, msg.sender)) {
+        if (!(hasRole(MERKLE_SETTER_ROLE, msg.sender) || msg.sender == owner())) {
             revert UnauthorizedRole(MERKLE_SETTER_ROLE, msg.sender);
         }
         _;
     }
     
     modifier onlyEmergencyRole() {
-        if (!hasRole(EMERGENCY_ROLE, msg.sender)) {
+        if (!(hasRole(EMERGENCY_ROLE, msg.sender) || msg.sender == owner())) {
             revert UnauthorizedRole(EMERGENCY_ROLE, msg.sender);
         }
         _;
     }
     
     modifier onlyOperator() {
-        if (!hasRole(OPERATOR_ROLE, msg.sender)) {
+        if (!(hasRole(OPERATOR_ROLE, msg.sender) || msg.sender == owner())) {
             revert UnauthorizedRole(OPERATOR_ROLE, msg.sender);
         }
         _;
@@ -212,6 +212,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
             deploymentTime = _deploymentTime;
         } else {
             uint256 alignedTime = (block.timestamp / ROUND_DURATION) * ROUND_DURATION;
+            alignedTime = block.timestamp - (block.timestamp % ROUND_DURATION);
             deploymentTime = alignedTime;
         }
         
@@ -237,98 +238,50 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
         return (block.timestamp - deploymentTime) / ROUND_DURATION;
     }
 
-    /**
-     * @notice Check if user has claimed tokens in specific round
-     * @param _round Round number to check
-     * @param _user User address
-     * @return True if user has claimed in this round
-     */
-    function hasUserClaimed(uint256 _round, address _user) external view returns (bool) {
-        return hasClaimed[_round][_user];
+    // ❌ ИСПРАВИТЬ эти функции:
+
+    function hasUserClaimed(uint256 round, address user) external view returns (bool) {
+        return hasClaimed[round][user];
     }
 
-    /**
-     * @notice Get contract's VBITE token balance
-     * @return Available token balance
-     */
-    function getContractBalance() external view returns (uint256) {
-        return vbiteToken.balanceOf(address(this));
-    }
-
-    /**
-     * @notice Get round start and end timestamps (aligned to 00:00 UTC)
-     * @param _round Round number
-     * @return startTime Round start timestamp (00:00 UTC)
-     * @return endTime Round end timestamp (23:59:59 UTC)
-     */
-    function getRoundTimes(uint256 _round) external view returns (uint256 startTime, uint256 endTime) {
-        startTime = deploymentTime + (_round * ROUND_DURATION);
+    function getRoundTimes(uint256 round) external view returns (uint256 startTime, uint256 endTime) {
+        startTime = deploymentTime + (round * ROUND_DURATION);
         endTime = startTime + ROUND_DURATION - 1;
     }
 
-    /**
-     * @notice Check if round exists and can be claimed from
-     * @param _round Round number to check
-     * @return True if round exists and is claimable
-     */
-    function isRoundClaimable(uint256 _round) public view returns (bool) {
-        return _round <= maxAllowedRound && merkleRoots[_round] != bytes32(0);
+    function isRoundClaimable(uint256 round) public view returns (bool) {
+        return round <= maxAllowedRound && merkleRoots[round] != bytes32(0);
     }
 
-    /**
-     * @notice Verify Merkle proof without claiming
-     * @param _round Round number
-     * @param _amount Token amount to claim
-     * @param _proof Merkle proof array
-     * @param _user User address (can be different from msg.sender for verification)
-     * @return True if proof is valid
-     */
     function verifyProof(
-        uint256 _round,
-        uint256 _amount,
-        bytes32[] calldata _proof,
-        address _user
+        uint256 round,
+        uint256 amount,
+        bytes32[] calldata proof,
+        address user
     ) external view returns (bool) {
-        if (merkleRoots[_round] == bytes32(0)) return false;
+        if (merkleRoots[round] == bytes32(0)) return false;
         
-        bytes32 leaf = keccak256(abi.encodePacked(_user, _amount));
-        return MerkleProof.verify(_proof, merkleRoots[_round], leaf);
+        bytes32 leaf = keccak256(abi.encodePacked(user, amount));
+        return MerkleProof.verify(proof, merkleRoots[round], leaf);
     }
 
-    /**
-     * @notice Get user information for a specific round
-     * @param _user User address
-     * @param _round Round number
-     * @return hasClaimed_ Whether user has claimed in this round
-     * @return hasRoot Whether Merkle root is set for this round
-     * @return canClaim Whether user can claim from this round
-     * @return roundExists Whether round exists (not in future)
-     */
-    function getUserInfo(address _user, uint256 _round) 
+    function getUserInfo(address user, uint256 round)
         external 
         view 
         returns (
-            bool hasClaimed_, 
+            bool userHasClaimed,
             bool hasRoot, 
             bool canClaim,
             bool roundExists
         ) 
     {
-        hasClaimed_ = hasClaimed[_round][_user];
-        hasRoot = merkleRoots[_round] != bytes32(0);
-        roundExists = _round <= maxAllowedRound;
-        canClaim = roundExists && hasRoot && !hasClaimed_;
+        userHasClaimed = hasClaimed[round][user];
+        hasRoot = merkleRoots[round] != bytes32(0);
+        roundExists = round <= maxAllowedRound;
+        canClaim = roundExists && hasRoot && !userHasClaimed;
     }
 
-    /**
-     * @notice Get multiple rounds information for a user
-     * @param _user User address
-     * @param _rounds Array of round numbers to check
-     * @return claimedStatus Array of claim statuses
-     * @return hasRoots Array of root existence statuses
-     * @return canClaims Array of claimability statuses
-     */
-    function getUserInfoBatch(address _user, uint256[] calldata _rounds)
+    function getUserInfoBatch(address user, uint256[] calldata rounds)
         external
         view
         returns (
@@ -337,14 +290,14 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
             bool[] memory canClaims
         )
     {
-        uint256 length = _rounds.length;
+        uint256 length = rounds.length;
         claimedStatus = new bool[](length);
         hasRoots = new bool[](length);
         canClaims = new bool[](length);
         
         for (uint256 i = 0; i < length; i++) {
-            uint256 targetRound = _rounds[i];
-            claimedStatus[i] = hasClaimed[targetRound][_user];
+            uint256 targetRound = rounds[i];
+            claimedStatus[i] = hasClaimed[targetRound][user];
             hasRoots[i] = merkleRoots[targetRound] != bytes32(0);
             canClaims[i] = targetRound <= maxAllowedRound && hasRoots[i] && !claimedStatus[i];
         }
@@ -354,74 +307,62 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
     // User Functions
     // ==========================================
 
-    /**
-     * @notice Claim tokens for specific round
-     * @param _round Round number to claim for
-     * @param _amount Amount of tokens to claim
-     * @param _proof Merkle proof for the claim
-     */
     function claim(
-        uint256 _round,
-        uint256 _amount,
-        bytes32[] calldata _proof
+        uint256 round,
+        uint256 amount,
+        bytes32[] calldata proof
     ) external whenNotPaused nonReentrant {
-        if (_amount > MAX_CLAIM_AMOUNT) revert AmountTooLarge(_amount, MAX_CLAIM_AMOUNT);
-        if (_amount == 0) revert ZeroAmountProvided();
-        if (_round > maxAllowedRound) revert RoundNotExists(_round, maxAllowedRound);
-        if (hasClaimed[_round][msg.sender]) revert AlreadyClaimedInRound(_round, msg.sender);
-        if (merkleRoots[_round] == bytes32(0)) revert MerkleRootNotSet(_round);
+        if (amount > MAX_CLAIM_AMOUNT) revert AmountTooLarge(amount, MAX_CLAIM_AMOUNT);
+        if (amount == 0) revert ZeroAmountProvided();
+        if (round > maxAllowedRound) revert RoundNotExists(round, maxAllowedRound);
+        if (hasClaimed[round][msg.sender]) revert AlreadyClaimedInRound(round, msg.sender);
+        if (merkleRoots[round] == bytes32(0)) revert MerkleRootNotSet(round);
 
         // Verify Merkle proof
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, _amount));
-        if (!MerkleProof.verify(_proof, merkleRoots[_round], leaf)) {
+        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
+        if (!MerkleProof.verify(proof, merkleRoots[round], leaf)) {
             revert InvalidMerkleProof();
         }
 
         uint256 currentDay = block.timestamp / 1 days;
         uint256 dailyAvailable = dailyClaimLimit - dailyClaimed[currentDay];
-        if (_amount > dailyAvailable) {
-            revert DailyClaimLimitExceeded(_amount, dailyAvailable);
+        if (amount > dailyAvailable) {
+            revert DailyClaimLimitExceeded(amount, dailyAvailable);
         }
 
         // Check contract has enough tokens
         uint256 contractBalance = vbiteToken.balanceOf(address(this));
-        if (contractBalance < _amount) {
-            revert InsufficientContractBalance(_amount, contractBalance);
+        if (contractBalance < amount) {
+            revert InsufficientContractBalance(amount, contractBalance);
         }
 
         // Mark as claimed and update statistics
-        hasClaimed[_round][msg.sender] = true;
-        totalClaimedPerRound[_round] += _amount;
-        totalClaimedByUser[msg.sender] += _amount;
-        totalClaimed += _amount;
+        hasClaimed[round][msg.sender] = true;
+        totalClaimedPerRound[round] += amount;
+        totalClaimedByUser[msg.sender] += amount;
+        totalClaimed += amount;
 
         // Update daily claimed amount
-        dailyClaimed[currentDay] += _amount;
+        dailyClaimed[currentDay] += amount;
 
         // Transfer tokens
-        vbiteToken.safeTransfer(msg.sender, _amount);
+        vbiteToken.safeTransfer(msg.sender, amount);
 
-        emit TokensClaimed(msg.sender, _round, _amount, totalClaimedByUser[msg.sender]);
+        emit TokensClaimed(msg.sender, round, amount, totalClaimedByUser[msg.sender]);
 
         // Large claim monitoring
-        if (_amount > 100_000 * 10**18) {
-            emit LargeClaimAttempt(msg.sender, _round, _amount);
+        if (amount > 100_000 * 10**18) {
+            emit LargeClaimAttempt(msg.sender, round, amount);
         }
     }
 
-    /**
-     * @notice Batch claim tokens for multiple rounds
-     * @param _rounds Array of round numbers
-     * @param _amounts Array of token amounts
-     * @param _proofs Array of Merkle proofs
-     */
     function batchClaim(
-        uint256[] calldata _rounds,
-        uint256[] calldata _amounts,
-        bytes32[][] calldata _proofs
+        uint256[] calldata rounds,
+        uint256[] calldata amounts,
+        bytes32[][] calldata proofs
     ) external whenNotPaused nonReentrant {
-        uint256 length = _rounds.length;
-        if (length != _amounts.length || length != _proofs.length) {
+        uint256 length = rounds.length;
+        if (length != amounts.length || length != proofs.length) {
             revert ArrayLengthMismatch();
         }
         
@@ -431,8 +372,8 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
 
         // Verify all claims first
         for (uint256 i = 0; i < length; i++) {
-            uint256 targetRound = _rounds[i];
-            uint256 claimAmount = _amounts[i];
+            uint256 targetRound = rounds[i];
+            uint256 claimAmount = amounts[i];
             
             if (claimAmount == 0) revert ZeroAmountProvided();
             if (targetRound > maxAllowedRound) revert RoundNotExists(targetRound, maxAllowedRound);
@@ -440,7 +381,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
             if (merkleRoots[targetRound] == bytes32(0)) revert MerkleRootNotSet(targetRound);
 
             bytes32 leaf = keccak256(abi.encodePacked(msg.sender, claimAmount));
-            if (!MerkleProof.verify(_proofs[i], merkleRoots[targetRound], leaf)) {
+            if (!MerkleProof.verify(proofs[i], merkleRoots[targetRound], leaf)) {
                 revert InvalidMerkleProof();
             }
 
@@ -457,8 +398,8 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
 
         // Execute all claims
         for (uint256 i = 0; i < length; i++) {
-            uint256 targetRound = _rounds[i];
-            uint256 claimAmount = _amounts[i];
+            uint256 targetRound = rounds[i];
+            uint256 claimAmount = amounts[i];
 
             hasClaimed[targetRound][msg.sender] = true;
             totalClaimedPerRound[targetRound] += claimAmount;
@@ -476,103 +417,73 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
     // Role Management Functions (Owner Only)
     // ==========================================
 
-    /**
-     * @notice Grant backend admin role to address
-     * @param _account Address to grant role to
-     */
-    function grantBackendAdmin(address _account) external onlyOwner {
-        if (_account == address(0)) revert ZeroAddressProvided();
-        _grantRole(BACKEND_ADMIN_ROLE, _account);
-        emit BackendAdminGranted(_account, msg.sender);
+    // Все функции управления ролями:
+    function grantBackendAdmin(address account) external onlyOwner {
+        if (account == address(0)) revert ZeroAddressProvided();
+        _grantRole(BACKEND_ADMIN_ROLE, account);
+        emit BackendAdminGranted(account, msg.sender);
     }
 
-    /**
-     * @notice Revoke backend admin role from address
-     * @param _account Address to revoke role from
-     */
-    function revokeBackendAdmin(address _account) external onlyOwner {
-        _revokeRole(BACKEND_ADMIN_ROLE, _account);
-        emit BackendAdminRevoked(_account, msg.sender);
+    function revokeBackendAdmin(address account) external onlyOwner {
+        _revokeRole(BACKEND_ADMIN_ROLE, account);
+        emit BackendAdminRevoked(account, msg.sender);
     }
 
-    /**
-     * @notice Grant merkle setter role to address
-     * @param _account Address to grant role to
-     */
-    function grantMerkleSetter(address _account) external onlyOwner {
-        if (_account == address(0)) revert ZeroAddressProvided();
-        _grantRole(MERKLE_SETTER_ROLE, _account);
-        emit MerkleSetterGranted(_account, msg.sender);
+    function grantMerkleSetter(address account) external onlyOwner {
+        if (account == address(0)) revert ZeroAddressProvided();
+        _grantRole(MERKLE_SETTER_ROLE, account);
+        emit MerkleSetterGranted(account, msg.sender);
     }
 
-    /**
-     * @notice Revoke merkle setter role from address
-     * @param _account Address to revoke role from
-     */
-    function revokeMerkleSetter(address _account) external onlyOwner {
-        _revokeRole(MERKLE_SETTER_ROLE, _account);
-        emit MerkleSetterRevoked(_account, msg.sender);
+    function revokeMerkleSetter(address account) external onlyOwner {
+        _revokeRole(MERKLE_SETTER_ROLE, account);
+        emit MerkleSetterRevoked(account, msg.sender);
     }
 
-    /**
-     * @notice Grant emergency role to address
-     * @param _account Address to grant role to
-     */
-    function grantEmergencyRole(address _account) external onlyOwner {
-        if (_account == address(0)) revert ZeroAddressProvided();
-        _grantRole(EMERGENCY_ROLE, _account);
-        emit EmergencyRoleGranted(_account, msg.sender);
+    function grantEmergencyRole(address account) external onlyOwner {
+        if (account == address(0)) revert ZeroAddressProvided();
+        _grantRole(EMERGENCY_ROLE, account);
+        emit EmergencyRoleGranted(account, msg.sender);
     }
 
-    /**
-     * @notice Grant operator role to address
-     * @param _account Address to grant role to
-     */
-    function grantOperatorRole(address _account) external onlyOwner {
-        if (_account == address(0)) revert ZeroAddressProvided();
-        _grantRole(OPERATOR_ROLE, _account);
-        emit OperatorRoleGranted(_account, msg.sender);
+    function grantOperatorRole(address account) external onlyOwner {
+        if (account == address(0)) revert ZeroAddressProvided();
+        _grantRole(OPERATOR_ROLE, account);
+        emit OperatorRoleGranted(account, msg.sender);
     }
 
     // ==========================================
     // Backend Admin Functions
     // ==========================================
 
-    /**
-     * @notice Set Merkle root for specific round (Backend Admin)
-     * @param _round Round number
-     * @param _merkleRoot Merkle tree root hash
-     */
-    function setMerkleRootByBackend(uint256 _round, bytes32 _merkleRoot) external onlyMerkleSetter {
-        if (_round > getCurrentRound()) revert RoundInFuture(_round, getCurrentRound());
-        if (_merkleRoot == bytes32(0)) revert CannotSetZeroMerkleRoot();
+    function setMerkleRootByBackend(uint256 round, bytes32 merkleRoot) external onlyMerkleSetter {
+        if (round > getCurrentRound()) revert RoundInFuture(round, getCurrentRound());
+        if (merkleRoot == bytes32(0)) revert CannotSetZeroMerkleRoot();
         
-        if (merkleRoots[_round] != bytes32(0)) {
-            emit MerkleRootOverwritten(_round, merkleRoots[_round], _merkleRoot);
+        if (merkleRoots[round] != bytes32(0)) {
+            emit MerkleRootOverwritten(round, merkleRoots[round], merkleRoot);
         }
         
-        merkleRoots[_round] = _merkleRoot;
+        merkleRoots[round] = merkleRoot;
         
-        if (_round > lastRoundWithRoot) {
-            lastRoundWithRoot = _round;
+        if (round > lastRoundWithRoot) {
+            lastRoundWithRoot = round;
         }
-        if (_round > maxAllowedRound) {
-            maxAllowedRound = _round;
+        if (round > maxAllowedRound) {
+            maxAllowedRound = round;
         }
 
-        emit MerkleRootSet(_round, _merkleRoot, msg.sender);
+        emit MerkleRootSet(round, merkleRoot, msg.sender);
     }
 
     /**
      * @notice Set Merkle roots for multiple rounds (Backend Admin)
-     * @param _rounds Array of round numbers
-     * @param _merkleRootArray Array of Merkle roots
      */
     function setMerkleRootsBatchByBackend(
-        uint256[] calldata _rounds,
-        bytes32[] calldata _merkleRootArray
+        uint256[] calldata rounds,
+        bytes32[] calldata merkleRootArray
     ) external onlyMerkleSetter {
-        if (_rounds.length != _merkleRootArray.length) {
+        if (rounds.length != merkleRootArray.length) {
             revert ArrayLengthMismatch();
         }
 
@@ -580,12 +491,12 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
         uint256 maxRound = lastRoundWithRoot;
         uint256 newMaxAllowed = maxAllowedRound;
 
-        for (uint256 i = 0; i < _rounds.length; i++) {
-            uint256 targetRound = _rounds[i];
+        for (uint256 i = 0; i < rounds.length; i++) {
+            uint256 targetRound = rounds[i];
             if (targetRound > currentRoundNum) revert RoundInFuture(targetRound, currentRoundNum);
-            if (_merkleRootArray[i] == bytes32(0)) revert CannotSetZeroMerkleRoot();
+            if (merkleRootArray[i] == bytes32(0)) revert CannotSetZeroMerkleRoot();
             
-            merkleRoots[targetRound] = _merkleRootArray[i];
+            merkleRoots[targetRound] = merkleRootArray[i];
             
             if (targetRound > maxRound) {
                 maxRound = targetRound;
@@ -594,7 +505,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
                 newMaxAllowed = targetRound;
             }
 
-            emit MerkleRootSet(targetRound, _merkleRootArray[i], msg.sender);
+            emit MerkleRootSet(targetRound, merkleRootArray[i], msg.sender);
         }
 
         lastRoundWithRoot = maxRound;
@@ -606,11 +517,10 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
 
     /**
      * @notice Update daily claim limit (Operator)
-     * @param _newLimit New daily claim limit
      */
-    function updateDailyClaimLimitByOperator(uint256 _newLimit) external onlyOperator {
-        emit DailyClaimLimitUpdated(dailyClaimLimit, _newLimit);
-        dailyClaimLimit = _newLimit;
+    function updateDailyClaimLimitByOperator(uint256 newLimit) external onlyOperator {
+        emit DailyClaimLimitUpdated(dailyClaimLimit, newLimit);
+        dailyClaimLimit = newLimit;
     }
 
     /**
@@ -635,39 +545,37 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
 
     /**
      * @notice Set Merkle root for specific round (Owner)
-     * @param _round Round number
-     * @param _merkleRoot Merkle tree root hash
      */
-    function setMerkleRoot(uint256 _round, bytes32 _merkleRoot) external onlyOwner {
-        if (_round > getCurrentRound()) revert RoundInFuture(_round, getCurrentRound());
-        if (_merkleRoot == bytes32(0)) revert CannotSetZeroMerkleRoot();
+    function setMerkleRoot(uint256 round, bytes32 merkleRoot) external onlyOwner {
+        if (round > getCurrentRound()) revert RoundInFuture(round, getCurrentRound());
+        if (merkleRoot == bytes32(0)) revert CannotSetZeroMerkleRoot();
         
-        if (merkleRoots[_round] != bytes32(0)) {
-            emit MerkleRootOverwritten(_round, merkleRoots[_round], _merkleRoot);
+        if (merkleRoots[round] != bytes32(0)) {
+            emit MerkleRootOverwritten(round, merkleRoots[round], merkleRoot);
         }
         
-        merkleRoots[_round] = _merkleRoot;
+        merkleRoots[round] = merkleRoot;
         
-        if (_round > lastRoundWithRoot) {
-            lastRoundWithRoot = _round;
+        if (round > lastRoundWithRoot) {
+            lastRoundWithRoot = round;
         }
-        if (_round > maxAllowedRound) {
-            maxAllowedRound = _round;
+        if (round > maxAllowedRound) {
+            maxAllowedRound = round;
         }
 
-        emit MerkleRootSet(_round, _merkleRoot, msg.sender);
+        emit MerkleRootSet(round, merkleRoot, msg.sender);
     }
 
     /**
      * @notice Set Merkle roots for multiple rounds (Owner)
-     * @param _rounds Array of round numbers
-     * @param _merkleRootArray Array of Merkle roots
+     * @param rounds Array of round numbers
+     * @param merkleRootArray Array of Merkle roots
      */
     function setMerkleRoots(
-        uint256[] calldata _rounds,
-        bytes32[] calldata _merkleRootArray
+        uint256[] calldata rounds,
+        bytes32[] calldata merkleRootArray
     ) external onlyOwner {
-        if (_rounds.length != _merkleRootArray.length) {
+        if (rounds.length != merkleRootArray.length) {
             revert ArrayLengthMismatch();
         }
 
@@ -675,11 +583,11 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
         uint256 maxRound = lastRoundWithRoot;
         uint256 newMaxAllowed = maxAllowedRound;
 
-        for (uint256 i = 0; i < _rounds.length; i++) {
-            uint256 targetRound = _rounds[i];
+        for (uint256 i = 0; i < rounds.length; i++) {
+            uint256 targetRound = rounds[i];
             if (targetRound > currentRoundNum) revert RoundInFuture(targetRound, currentRoundNum);
             
-            merkleRoots[targetRound] = _merkleRootArray[i];
+            merkleRoots[targetRound] = merkleRootArray[i];
             
             if (targetRound > maxRound) {
                 maxRound = targetRound;
@@ -688,7 +596,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
                 newMaxAllowed = targetRound;
             }
 
-            emit MerkleRootSet(targetRound, _merkleRootArray[i], msg.sender);
+            emit MerkleRootSet(targetRound, merkleRootArray[i], msg.sender);
         }
 
         lastRoundWithRoot = maxRound;
@@ -700,53 +608,51 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
 
     /**
      * @notice Update max allowed round (Owner)
-     * @param _newMaxRound New maximum round number
      */
-    function updateMaxAllowedRound(uint256 _newMaxRound) external onlyOwner {
-        if (_newMaxRound > getCurrentRound()) revert RoundInFuture(_newMaxRound, getCurrentRound());
+    function updateMaxAllowedRound(uint256 newMaxRound) external onlyOwner {
+        if (newMaxRound > getCurrentRound()) revert RoundInFuture(newMaxRound, getCurrentRound());
         
         uint256 oldMaxRound = maxAllowedRound;
-        maxAllowedRound = _newMaxRound;
+        maxAllowedRound = newMaxRound;
         
-        emit MaxAllowedRoundUpdated(oldMaxRound, _newMaxRound, msg.sender);
+        emit MaxAllowedRoundUpdated(oldMaxRound, newMaxRound, msg.sender);
     }
 
     /**
      * @notice Deposit VBITE tokens to contract (Owner)
-     * @param _amount Amount of tokens to deposit
      */
-    function depositTokens(uint256 _amount) external onlyOwner {
-        if (_amount == 0) revert ZeroAmountProvided();
+    function depositTokens(uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmountProvided();
         
-        vbiteToken.safeTransferFrom(msg.sender, address(this), _amount);
+        vbiteToken.safeTransferFrom(msg.sender, address(this), amount);
         
-        emit TokensDeposited(msg.sender, _amount, vbiteToken.balanceOf(address(this)));
+        emit TokensDeposited(msg.sender, amount, vbiteToken.balanceOf(address(this)));
     }
 
     /**
      * @notice Withdraw VBITE tokens from contract (Owner)
-     * @param _amount Amount of tokens to withdraw
+     * @param amount Amount of tokens to withdraw
      */
-    function withdrawTokens(uint256 _amount) external onlyOwner {
-        if (_amount == 0) revert ZeroAmountProvided();
+    function withdrawTokens(uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmountProvided();
         
         uint256 contractBalance = vbiteToken.balanceOf(address(this));
-        if (contractBalance < _amount) {
-            revert InsufficientContractBalance(_amount, contractBalance);
+        if (contractBalance < amount) {
+            revert InsufficientContractBalance(amount, contractBalance);
         }
         
-        vbiteToken.safeTransfer(msg.sender, _amount);
+        vbiteToken.safeTransfer(msg.sender, amount);
         
-        emit TokensWithdrawn(msg.sender, _amount, vbiteToken.balanceOf(address(this)));
+        emit TokensWithdrawn(msg.sender, amount, vbiteToken.balanceOf(address(this)));
     }
 
     /**
      * @notice Update daily claim limit (Owner)
-     * @param _newLimit New daily claim limit
+     * @param newLimit New daily claim limit
      */
-    function updateDailyClaimLimit(uint256 _newLimit) external onlyOwner {
-        emit DailyClaimLimitUpdated(dailyClaimLimit, _newLimit);
-        dailyClaimLimit = _newLimit;
+    function updateDailyClaimLimit(uint256 newLimit) external onlyOwner {
+        emit DailyClaimLimitUpdated(dailyClaimLimit, newLimit);
+        dailyClaimLimit = newLimit;
     }
 
     /**
@@ -811,46 +717,35 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControl {
 
     /**
      * @notice Check if address has backend admin role
-     * @param _account Address to check
-     * @return True if address has backend admin role
      */
-    function isBackendAdmin(address _account) external view returns (bool) {
-        return hasRole(BACKEND_ADMIN_ROLE, _account);
+    function isBackendAdmin(address account) external view returns (bool) {
+        return hasRole(BACKEND_ADMIN_ROLE, account);
+    }
+
+    function isMerkleSetter(address account) external view returns (bool) {
+        return hasRole(MERKLE_SETTER_ROLE, account);
+    }
+
+    function hasEmergencyRole(address account) external view returns (bool) {
+        return hasRole(EMERGENCY_ROLE, account);
+    }
+
+    function isOperator(address account) external view returns (bool) {
+        return hasRole(OPERATOR_ROLE, account);
     }
 
     /**
-     * @notice Check if address has merkle setter role
-     * @param _account Address to check
-     * @return True if address has merkle setter role
+     * @notice Support interface detection
+     * @param interfaceId Interface identifier to check
+     * @return True if interface is supported
      */
-    function isMerkleSetter(address _account) external view returns (bool) {
-        return hasRole(MERKLE_SETTER_ROLE, _account);
-    }
-
-    /**
-     * @notice Check if address has emergency role
-     * @param _account Address to check
-     * @return True if address has emergency role
-     */
-    function hasEmergencyRole(address _account) external view returns (bool) {
-        return hasRole(EMERGENCY_ROLE, _account);
-    }
-
-    /**
-     * @notice Check if address has operator role
-     * @param _account Address to check
-     * @return True if address has operator role
-     */
-    function isOperator(address _account) external view returns (bool) {
-        return hasRole(OPERATOR_ROLE, _account);
-    }
-
-    /**
-     * @notice Get all role members for a specific role
-     * @param _role Role hash to query
-     * @return count Number of members with this role
-     */
-    function getRoleMemberCount(bytes32 _role) external view returns (uint256 count) {
-        return getRoleMemberCount(_role);
+    function supportsInterface(bytes4 interfaceId) 
+        public 
+        view 
+        virtual 
+        override(AccessControlEnumerable) 
+        returns (bool) 
+    {
+        return super.supportsInterface(interfaceId);
     }
 }
