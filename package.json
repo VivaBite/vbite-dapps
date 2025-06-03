@@ -15,7 +15,7 @@
     "local:deploy:dryrun": "dotenv -e .env.local -- bash -c 'FOUNDRY_PROFILE=scripts forge script local/DeployLocal.s.sol --via-ir --ffi --slow'",
     "prod:deploy": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/ProdDeploy.s.sol --rpc-url $ETH_RPC_URL --slow --broadcast'",
     "prod:deploy:dryrun": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/ProdDeploy.s.sol --rpc-url $ETH_RPC_URL --slow'",
-    "prod:aitrdrop:dryrun": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/AirdropDeploy.s.sol --rpc-url $ETH_RPC_URL --slow'",
+    "prod:airdrop:dryrun": "dotenv -e .env.prod -- bash -c 'FOUNDRY_PROFILE=scripts forge script scripts/AirdropDeploy.s.sol --rpc-url $ETH_RPC_URL --slow'",
     "format:sol": "prettier --write 'contracts/**/*.sol'"
   },
   "type": "module",
