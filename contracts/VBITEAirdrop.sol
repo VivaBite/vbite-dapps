@@ -100,6 +100,8 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
     error OperationNotProposed(bytes32 operation);
     error TimelockNotExpired(uint256 currentTime, uint256 requiredTime);
     error UnauthorizedRole(bytes32 role, address account);
+    error InsufficientGasForBatch(uint256 availableGas, uint256 requiredGas);
+    error InsufficientGasRemaining();
 
     // ==========================================
     // Events
@@ -143,14 +145,14 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
     event EmergencyWithdraw(address indexed admin, uint256 amount, uint256 timestamp);
     event DailyClaimLimitUpdated(uint256 oldLimit, uint256 newLimit);
     event OperationProposed(bytes32 operation, uint256 executionTime);
-    
-    // Role management events
     event BackendAdminGranted(address indexed account, address indexed grantedBy);
     event BackendAdminRevoked(address indexed account, address indexed revokedBy);
     event MerkleSetterGranted(address indexed account, address indexed grantedBy);
     event MerkleSetterRevoked(address indexed account, address indexed revokedBy);
     event EmergencyRoleGranted(address indexed account, address indexed grantedBy);
     event OperatorRoleGranted(address indexed account, address indexed grantedBy);
+    event LowGasWarning(address indexed user, uint256 initialGas, uint256 remainingGas);
+    event SuspiciousActivity(address indexed user, string message, uint256 timestamp);
 
     // ==========================================
     // Modifiers
@@ -188,12 +190,6 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
     // Constructor
     // ==========================================
 
-    /**
-     * @notice Initialize airdrop contract with role-based access control
-     * @param _vbiteToken Address of VBITE token contract
-     * @param _ownerAddress Contract owner address
-     * @param _deploymentTime Optional custom deployment time (use 0 for current time)
-     */
     constructor(
         address _vbiteToken,
         address _ownerAddress,
@@ -206,12 +202,17 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
         
         if (_deploymentTime > 0) {
             if (_deploymentTime > block.timestamp) revert RoundInFuture(_deploymentTime, block.timestamp);
-            if (_deploymentTime < block.timestamp - 7 days) {
-                revert DeploymentTimeTooFarInPast(_deploymentTime, block.timestamp - 7 days);
+            
+            uint256 alignedTime = _deploymentTime - (_deploymentTime % ROUND_DURATION);
+            
+            if (alignedTime < block.timestamp - 7 days) {
+                revert DeploymentTimeTooFarInPast(alignedTime, block.timestamp - 7 days);
             }
-            deploymentTime = _deploymentTime;
+            
+            deploymentTime = alignedTime;
         } else {
-            deploymentTime = block.timestamp - (block.timestamp % ROUND_DURATION);
+            uint256 currentTime = block.timestamp;
+            deploymentTime = currentTime - (currentTime % ROUND_DURATION);
         }
         
         maxAllowedRound = getCurrentRound();
@@ -314,7 +315,12 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
         if (hasClaimed[round][msg.sender]) revert AlreadyClaimedInRound(round, msg.sender);
         if (merkleRoots[round] == bytes32(0)) revert MerkleRootNotSet(round);
 
-        // Verify Merkle proof
+        uint256 currentRound = getCurrentRound();
+        if (round > currentRound + MAX_ROUNDS_AHEAD) {
+            emit SuspiciousActivity(msg.sender, "Claim from too far future round", block.timestamp);
+            revert RoundInFuture(round, currentRound);
+        }
+
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
         if (!MerkleProof.verify(proof, merkleRoots[round], leaf)) {
             revert InvalidMerkleProof();
@@ -326,30 +332,44 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
             revert DailyClaimLimitExceeded(amount, dailyAvailable);
         }
 
-        // Check contract has enough tokens
         uint256 contractBalance = vbiteToken.balanceOf(address(this));
         if (contractBalance < amount) {
             revert InsufficientContractBalance(amount, contractBalance);
         }
 
-        // Mark as claimed and update statistics
+        if (totalClaimedByUser[msg.sender] > 0) {
+            uint256 avgClaimSize = totalClaimedByUser[msg.sender] / 
+                (_getUserActiveRoundsCount(msg.sender) + 1);
+            
+            if (amount > avgClaimSize * 10) {
+                emit SuspiciousActivity(msg.sender, "Unusually large claim detected", block.timestamp);
+            }
+        }
+
         hasClaimed[round][msg.sender] = true;
         totalClaimedPerRound[round] += amount;
         totalClaimedByUser[msg.sender] += amount;
         totalClaimed += amount;
 
-        // Update daily claimed amount
         dailyClaimed[currentDay] += amount;
 
-        // Transfer tokens
         vbiteToken.safeTransfer(msg.sender, amount);
 
         emit TokensClaimed(msg.sender, round, amount, totalClaimedByUser[msg.sender]);
 
-        // Large claim monitoring
         if (amount > 100_000 * 10**18) {
             emit LargeClaimAttempt(msg.sender, round, amount);
         }
+    }
+
+    function _getUserActiveRoundsCount(address user) private view returns (uint256) {
+        uint256 count = 0;
+        for (uint256 i = 0; i <= maxAllowedRound; i++) {
+            if (hasClaimed[i][user]) {
+                count++;
+            }
+        }
+        return count;
     }
 
     function batchClaim(
@@ -364,13 +384,25 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
         
         if (length > MAX_BATCH_SIZE) revert TooManyBatchOperations(length, MAX_BATCH_SIZE);
         
-        uint256 totalAmount = 0;
+        uint256 gasStart = gasleft();
+        uint256 minGasPerOperation = 50000;
+        uint256 requiredReserve = length * minGasPerOperation;
         
+        if (gasStart < requiredReserve) {
+            revert InsufficientGasForBatch(gasStart, requiredReserve);
+        }
+        
+        uint256 totalAmount = 0;
         uint256 currentDay = block.timestamp / 1 days;
         uint256 dailyAvailable = dailyClaimLimit - dailyClaimed[currentDay];
 
-        // Verify all claims first
         for (uint256 i = 0; i < length; i++) {
+            if (i % 10 == 0 && i > 0) {
+                if (gasleft() < (gasStart * 20) / 100) { // Осталось менее 20% газа
+                    revert InsufficientGasRemaining();
+                }
+            }
+            
             uint256 targetRound = rounds[i];
             uint256 claimAmount = amounts[i];
             
@@ -384,22 +416,19 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
                 revert InvalidMerkleProof();
             }
 
-            uint256 newTotal = totalAmount + claimAmount;
-            if (newTotal < totalAmount) revert IntegerOverflow();
-            totalAmount = newTotal;
+            if (totalAmount > type(uint256).max - claimAmount) revert IntegerOverflow();
+            totalAmount += claimAmount;
         }
 
         if (totalAmount > dailyAvailable) {
             revert DailyClaimLimitExceeded(totalAmount, dailyAvailable);
         }
 
-        // Check contract has enough tokens
         uint256 contractBalance = vbiteToken.balanceOf(address(this));
         if (contractBalance < totalAmount) {
             revert InsufficientContractBalance(totalAmount, contractBalance);
         }
 
-        // Execute all claims
         for (uint256 i = 0; i < length; i++) {
             uint256 targetRound = rounds[i];
             uint256 claimAmount = amounts[i];
@@ -414,8 +443,11 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
 
         dailyClaimed[currentDay] += totalAmount;
 
-        // Single token transfer
         vbiteToken.safeTransfer(msg.sender, totalAmount);
+        
+        if (gasleft() < gasStart / 20) {
+            emit LowGasWarning(msg.sender, gasStart, gasleft());
+        }
     }
 
     // ==========================================
