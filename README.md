@@ -40,6 +40,7 @@ All core contracts are located in `contracts/` and are published via submodule i
 | Contract                | Purpose                                                                      |
 |-------------------------|------------------------------------------------------------------------------|
 | `VBITE.sol`             | ERC20 token contract                                                         |
+| `VBITEAirdrop.sol`      | Airdrop contract                                                             |
 | `VBITECrowdsale.sol`    | Crowdsale with multiple payment tokens, Chainlink price feeds, and NFT logic |
 | `VBITELifetimeNFT.sol`  | Lifetime non-transferable NFT contract (Silver, Gold, Platinum tiers)        |
 | `VBITEAccessTypes.sol`  | Enum declarations for NFT types and internal access control                  |
@@ -62,10 +63,11 @@ Below are the on-chain addresses of the deployed contracts. These will be update
 
 | Contract            | Network         | Address                                                                                                                  |
 |---------------------|-----------------|--------------------------------------------------------------------------------------------------------------------------|
-| `VBITE`             | Polygon Mainnet | [0x6f196235b9d68B04DA51e747AbDF00e6f944b332](https://polygonscan.com/address/0x6f196235b9d68B04DA51e747AbDF00e6f944b332) |
-| `VBITECrowdsale`    | Polygon Mainnet | [0x49da49d6981fb9eC6ee7368D93CcACed8d220458](https://polygonscan.com/address/0x49da49d6981fb9eC6ee7368D93CcACed8d220458) |
-| `VBITELifetimeNFT`  | Polygon Mainnet | [0x1895fFc4b00DBe93fd6FC6B59bc08C6825Dadf60](https://polygonscan.com/address/0x1895fFc4b00DBe93fd6FC6B59bc08C6825Dadf60) |
-| `VBITEVestingVault` | Polygon Mainnet | [0x1524CD755FB3B11a99B85B9340243C9909bB8A8E](https://polygonscan.com/address/0x1524CD755FB3B11a99B85B9340243C9909bB8A8E) |
+| `VBITE`             | Polygon Mainnet | [0x6f196235b9d68b04da51e747abdf00e6f944b332](https://polygonscan.com/address/0x6f196235b9d68b04da51e747abdf00e6f944b332) |
+| `VBITECrowdsale`    | Polygon Mainnet | [0x49da49d6981fb9ec6ee7368d93ccaced8d220458](https://polygonscan.com/address/0x49da49d6981fb9ec6ee7368d93ccaced8d220458) |
+| `VBITEAirdrop`      | Polygon Mainnet | [0xc507e163e3e65d448679193d1b8490e656e2374e](https://polygonscan.com/address/0xc507e163e3e65d448679193d1b8490e656e2374e) |
+| `VBITELifetimeNFT`  | Polygon Mainnet | [0x1895ffc4b00dbe93fd6fc6b59bc08c6825dadf60](https://polygonscan.com/address/0x1895ffc4b00dbe93fd6fc6b59bc08c6825dadf60) |
+| `VBITEVestingVault` | Polygon Mainnet | [0x1524cd755fb3b11a99b85b9340243c9909bb8a8e](https://polygonscan.com/address/0x1524cd755fb3b11a99b85b9340243c9909bb8a8e) |
 
 > These addresses will be published after deployment and verification. Please refer to official sources for up-to-date data
 
