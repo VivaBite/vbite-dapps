@@ -1,13 +1,14 @@
 {
   "chainId": 137,
   "dapps": {
-    "ownerAddress": "0xb97bF74931b0dED1Cc9086A1937768886172A80E",
-    "treasuryAddress": "0x4dB085805d2B7117dff18CEfAc2422dafCaE7a2B",
-    "dexAddress": "0x988481dC9b74855e26E9Ea074827eCC243D90865",
-    "projectAddress": "0xbCF25253B598b03c1756ad58761257678575ece3",
-    "vbiteAddress": "0x6f196235b9d68B04DA51e747AbDF00e6f944b332",
-    "crowdsaleAddress": "0x49da49d6981fb9eC6ee7368D93CcACed8d220458",
-    "nftAdderss": "0x1895fFc4b00DBe93fd6FC6B59bc08C6825Dadf60",
-    "vestingAddress": "0x1524CD755FB3B11a99B85B9340243C9909bB8A8E"
+    "ownerAddress": "0xb97bf74931b0ded1cc9086a1937768886172a80e",
+    "treasuryAddress": "0x4db085805d2b7117dff18cefac2422dafcae7a2b",
+    "dexAddress": "0x988481dc9b74855e26e9ea074827ecc243d90865",
+    "projectAddress": "0xbcf25253b598b03c1756ad58761257678575ece3",
+    "vbiteAddress": "0x6f196235b9d68b04da51e747abdf00e6f944b332",
+    "crowdsaleAddress": "0x49da49d6981fb9ec6ee7368d93ccaced8d220458",
+    "nftAdderss": "0x1895ffc4b00dbe93fd6fc6b59bc08c6825dadf60",
+    "vestingAddress": "0x1524cd755fb3b11a99b85b9340243c9909bb8a8e",
+    "airdropAddress": "0xc507e163e3e65d448679193d1b8490e656e2374e"
   }
 }

@@ -1,35 +1,35 @@
 {
   "chainId": 31337,
   "dapps": {
-    "ownerAddress": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-    "treasuryAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-    "dexAddress": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-    "projectAddress": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
-    "vbiteAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-    "crowdsaleAddress": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
-    "nftAdderss": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-    "vestingAddress": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+    "ownerAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+    "treasuryAddress": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "dexAddress": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+    "projectAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "vbiteAddress": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+    "crowdsaleAddress": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+    "nftAdderss": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+    "vestingAddress": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0"
   },
   "tokens": {
     "matic": "0x0000000000000000000000000000000000000000",
-    "usdc": "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0",
-    "usdt": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
-    "dai": "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1",
-    "link": "0x09635F643e140090A9A8Dcd712eD6285858ceBef",
-    "aave": "0x84eA74d481Ee0A5332c457a4d796187F6Ba67fEB",
-    "crv": "0xf5059a5D33d5853360D16C683c16e67980206f36",
-    "bal": "0x99bbA657f2BbC93c02D617f8bA121cB8Fc104Acf",
-    "sushi": "0x36C02dA8a0983159322a80FFE9F24b1acfF8B570"
+    "usdc": "0xa51c1fc2f0d1a1b8494ed1fe312d7c3a78ed91c0",
+    "usdt": "0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae",
+    "dai": "0x4ed7c70f96b99c776995fb64377f0d4ab3b0e1c1",
+    "link": "0x09635f643e140090a9a8dcd712ed6285858cebef",
+    "aave": "0x84ea74d481ee0a5332c457a4d796187f6ba67feb",
+    "crv": "0xf5059a5d33d5853360d16c683c16e67980206f36",
+    "bal": "0x99bba657f2bbc93c02d617f8ba121cb8fc104acf",
+    "sushi": "0x36c02da8a0983159322a80ffe9f24b1acff8b570"
   },
   "feeds": {
-    "matic": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
-    "usdc": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
-    "usdt": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed",
-    "dai": "0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44",
-    "link": "0xc5a5C42992dECbae36851359345FE25997F5C42d",
-    "aave": "0x9E545E3C0baAB3E08CdfD552C960A1050f373042",
-    "crv": "0x95401dc811bb5740090279Ba06cfA8fcF6113778",
-    "bal": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF",
-    "sushi": "0x809d550fca64d94Bd9F66E60752A544199cfAC3D"
+    "matic": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+    "usdc": "0x0dcd1bf9a1b36ce34237eeafef220932846bcd82",
+    "usdt": "0x68b1d87f95878fe05b998f19b66f4baba5de1aed",
+    "dai": "0x322813fd9a801c5507c9de605d63cea4f2ce6c44",
+    "link": "0xc5a5c42992decbae36851359345fe25997f5c42d",
+    "aave": "0x9e545e3c0baab3e08cdfd552c960a1050f373042",
+    "crv": "0x95401dc811bb5740090279ba06cfa8fcf6113778",
+    "bal": "0x0e801d84fa97b50751dbf25036d067dcf18858bf",
+    "sushi": "0x809d550fca64d94bd9f66e60752a544199cfac3d"
   }
 }
