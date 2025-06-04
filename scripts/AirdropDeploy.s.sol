@@ -12,12 +12,10 @@ contract AirdropDeploy is Script {
         address vbiteToken = vm.envAddress("VBITE_TOKEN_ADDRESS");
         uint256 airdropAllocation = vm.envUint("AIRDROP_ALLOCATION");
         
-        // Опционально: кастомное время деплоя (0 для текущего времени)
         uint256 deploymentTime = vm.envOr("DEPLOYMENT_TIME", uint256(0));
 
         vm.startBroadcast(privateKey);
 
-        // Получаем адрес деплоящего аккаунта
         address deployer = vm.addr(privateKey);
         
         console.log("=== Pre-Deployment Checks ===");
@@ -25,10 +23,8 @@ contract AirdropDeploy is Script {
         console.log("VBITE token address:", vbiteToken);
         console.log("Required allocation:", airdropAllocation);
 
-        // Создаем экземпляр VBITE контракта
         VBITE vbite = VBITE(vbiteToken);
         
-        // Проверяем, что деплоер является овнером токена
         require(
             vbite.owner() == deployer, 
             "Deployer must be the owner of VBITE token"
@@ -37,8 +33,7 @@ contract AirdropDeploy is Script {
         console.log("Token owner:", vbite.owner());
         console.log("Access rights verified");
 
-        // Деплой контракта аирдропа
-        console.log("\n=== Deploying Airdrop Contract ===");
+        console.log("=== Deploying Airdrop Contract ===");
         VBITEAirdrop airdrop = new VBITEAirdrop(
             vbiteToken,
             owner,
@@ -47,13 +42,11 @@ contract AirdropDeploy is Script {
 
         console.log("Airdrop contract deployed at:", address(airdrop));
 
-        // Минтим токены напрямую в контракт аирдропа
-        console.log("\n=== Minting Tokens to Airdrop Contract ===");
+        console.log("=== Minting Tokens to Airdrop Contract ===");
         console.log("Minting", airdropAllocation, "VBITE tokens to:", address(airdrop));
         
         vbite.mintTokens(address(airdrop), airdropAllocation);
 
-        // Проверяем баланс контракта после минтинга
         uint256 contractBalance = vbite.balanceOf(address(airdrop));
         
         console.log("=== Deployment Summary ===");
@@ -67,7 +60,6 @@ contract AirdropDeploy is Script {
         console.log("Deployment time:", airdrop.deploymentTime());
         console.log("Max allowed round:", airdrop.maxAllowedRound());
 
-        // Проверяем, что минтинг прошел успешно
         require(
             contractBalance >= airdropAllocation, 
             "Minting failed: insufficient contract balance"

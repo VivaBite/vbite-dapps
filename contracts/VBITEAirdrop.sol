@@ -53,11 +53,11 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
     uint256 public totalClaimed;
 
     uint256 public constant MAX_BATCH_SIZE = 50;
-    uint256 public constant MAX_CLAIM_AMOUNT = 1_000_000 * 10**18; // 1M токенов
-    uint256 public constant MAX_ROUNDS_AHEAD = 365; // Максимум на год вперед
+    uint256 public constant MAX_CLAIM_AMOUNT = 1_000_000 * 10**18;
+    uint256 public constant MAX_ROUNDS_AHEAD = 365;
 
-    uint256 public dailyClaimLimit = 10_000_000 * 10**18; // 10M токенов в день
-    mapping(uint256 => uint256) public dailyClaimed; // день => количество
+    uint256 public dailyClaimLimit = 10_000_000 * 10**18;
+    mapping(uint256 => uint256) public dailyClaimed;
 
     uint256 public constant TIMELOCK_DELAY = 24 hours;
     mapping(bytes32 => uint256) public timelocks;
@@ -211,9 +211,7 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
             }
             deploymentTime = _deploymentTime;
         } else {
-            uint256 alignedTime = (block.timestamp / ROUND_DURATION) * ROUND_DURATION;
-            alignedTime = block.timestamp - (block.timestamp % ROUND_DURATION);
-            deploymentTime = alignedTime;
+            deploymentTime = block.timestamp - (block.timestamp % ROUND_DURATION);
         }
         
         maxAllowedRound = getCurrentRound();
@@ -237,8 +235,6 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
     function getCurrentRound() public view returns (uint256) {
         return (block.timestamp - deploymentTime) / ROUND_DURATION;
     }
-
-    // ❌ ИСПРАВИТЬ эти функции:
 
     function hasUserClaimed(uint256 round, address user) external view returns (bool) {
         return hasClaimed[round][user];
@@ -369,6 +365,9 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
         if (length > MAX_BATCH_SIZE) revert TooManyBatchOperations(length, MAX_BATCH_SIZE);
         
         uint256 totalAmount = 0;
+        
+        uint256 currentDay = block.timestamp / 1 days;
+        uint256 dailyAvailable = dailyClaimLimit - dailyClaimed[currentDay];
 
         // Verify all claims first
         for (uint256 i = 0; i < length; i++) {
@@ -390,6 +389,10 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
             totalAmount = newTotal;
         }
 
+        if (totalAmount > dailyAvailable) {
+            revert DailyClaimLimitExceeded(totalAmount, dailyAvailable);
+        }
+
         // Check contract has enough tokens
         uint256 contractBalance = vbiteToken.balanceOf(address(this));
         if (contractBalance < totalAmount) {
@@ -409,6 +412,8 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
             emit TokensClaimed(msg.sender, targetRound, claimAmount, totalClaimedByUser[msg.sender]);
         }
 
+        dailyClaimed[currentDay] += totalAmount;
+
         // Single token transfer
         vbiteToken.safeTransfer(msg.sender, totalAmount);
     }
@@ -417,7 +422,6 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
     // Role Management Functions (Owner Only)
     // ==========================================
 
-    // Все функции управления ролями:
     function grantBackendAdmin(address account) external onlyOwner {
         if (account == address(0)) revert ZeroAddressProvided();
         _grantRole(BACKEND_ADMIN_ROLE, account);
@@ -546,21 +550,23 @@ contract VBITEAirdrop is Ownable, Pausable, ReentrancyGuard, AccessControlEnumer
     /**
      * @notice Set Merkle root for specific round (Owner)
      */
-    function setMerkleRoot(uint256 round, bytes32 merkleRoot) external onlyOwner {
-        if (round > getCurrentRound()) revert RoundInFuture(round, getCurrentRound());
+    function setMerkleRoot(uint256 round, bytes32 merkleRoot) external onlyMerkleSetter {
         if (merkleRoot == bytes32(0)) revert CannotSetZeroMerkleRoot();
-        
+        if (round > getCurrentRound() + MAX_ROUNDS_AHEAD) {
+            revert RoundInFuture(round, getCurrentRound());
+        }
+
         if (merkleRoots[round] != bytes32(0)) {
             emit MerkleRootOverwritten(round, merkleRoots[round], merkleRoot);
         }
-        
+
         merkleRoots[round] = merkleRoot;
         
-        if (round > lastRoundWithRoot) {
-            lastRoundWithRoot = round;
-        }
+        lastRoundWithRoot = round;
+
         if (round > maxAllowedRound) {
             maxAllowedRound = round;
+            emit MaxAllowedRoundUpdated(maxAllowedRound, round, msg.sender);
         }
 
         emit MerkleRootSet(round, merkleRoot, msg.sender);
