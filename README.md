@@ -15,6 +15,7 @@ This repository is the main development monorepo for all EVM-based components of
 
 ```text
 contracts/       # Core Solidity contracts
+flat/            # Flattened contracts for Ploygonscan checks
 local/           # Local development & config files
 mocks/           # Internal test/mock contracts
 scripts/         # Foundry/Node deploy & automation scripts
